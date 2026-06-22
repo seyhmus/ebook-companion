@@ -1,15 +1,23 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Dependencies
 node_modules/
 
-# Expo
+# Expo & Bundlers
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+.metro-health-check*
 
-# Native
+# Local Runtime / Generated Cache
+# Ignores local sandboxed book data and scripts created during runtime testing
+*.html
+*.json
+*.js
+!app.json
+!package.json
+!tsconfig.json
+
+# Native Signing & Configurations
 .kotlin/
 *.orig.*
 *.jks
@@ -17,25 +25,21 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+/ios
+/android
 
-# Metro
-.metro-health-check*
+# Environment & Credentials
+.env*.local
+*.pem
 
-# debug
+# Debug & Logs
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# IDE & System Files
 .DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
+Thumbs.db
+.idea/
+.vscode/
 *.tsbuildinfo
-
-# generated native folders
-/ios
-/android
