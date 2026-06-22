@@ -32,6 +32,8 @@ export default function App() {
   const { setPageInsight, getCachedInsight } = useCacheStore();
   const { setBook, getLocationForBook } = useBookStore();
 
+  const lastProcessedKey = useRef("");
+
   const handleImportEpub = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -62,13 +64,13 @@ export default function App() {
         setBookId(stableBookId);
         setBook(stableBookId);
         setToc([]);
+        lastProcessedKey.current = "";
       }
     } catch (error) {
       console.error("Error picking document asset:", error);
     }
   };
 
-  // Keep your handlers (handleTextSelect, handlePageTurn) identical here...
   const handleTextSelect = async (selectedText: string) => {
     setIsPanelOpen(true);
     setIsLoading(true);
@@ -79,26 +81,49 @@ export default function App() {
     setIsLoading(false);
   };
 
-  const handlePageTurn = async (pageText: string) => {
-    const pageKey = pageText.slice(0, 20).replace(/[^a-zA-Z0-9]/g, "_");
+  // cfi now comes directly from the WebView's PAGE_TURN message (sent
+  // together with the page text from the same `relocated` event), instead
+  // of being read separately from the Zustand store. Reading currentCfi
+  // from the store here raced against the LOCATION_CHANGE message that
+  // updates it -- both messages fire from the same epub.js event, but
+  // there's no guarantee the store update commits before this handler
+  // runs, which intermittently caused the dedup key to be computed against
+  // a stale CFI and silently skip real page turns within the same chapter.
+  const handlePageTurn = async (pageText: string, cfi: string | null) => {
+    console.log("DEBUG [App]: Sending text to AI (first 50 chars):", pageText.substring(0, 50));
+    const pageKey = `visibleTextV1_${bookId}_${cfi}`;
+
+    // If this page is already being processed, discard the duplicate event.
+    if (pageKey === lastProcessedKey.current) {
+      console.log("TRACE: Debouncing duplicate PageTurn for key:", pageKey);
+      return;
+    }
+
+    lastProcessedKey.current = pageKey;
+
+    console.log("TRACE: handlePageTurn started for key:", pageKey);
+
     const cachedData = getCachedInsight(pageKey);
     if (cachedData) {
+      console.log("TRACE: Cache Hit! Calling setActiveData with:", cachedData);
       setActiveData(cachedData);
       return;
     }
+
+    console.log("TRACE: Cache Miss. Adding to groqQueue.");
     setIsLoading(true);
+
     groqQueue.add(async () => {
       const data = await fetchPageInsights(pageText);
+      console.log("TRACE: Groq fetch complete. Result:", !!data);
+
       if (data) {
         setPageInsight(pageKey, data);
+        console.log("TRACE: Updating State with new data");
         setActiveData(data);
       }
       setIsLoading(false);
     });
-  };
-
-  const handleTocSelect = (href: string) => {
-    epubViewerRef.current?.navigateToHref(href);
   };
 
   return (

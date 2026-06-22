@@ -20,20 +20,29 @@ class GroqQueueProcessor {
   }
 
   private async processNext(): Promise<void> {
-    if (this.isProcessing || this.queue.length === 0) return;
+    if (this.isProcessing) {
+      console.log("DEBUG [Queue]: Busy, skipping/waiting...");
+      return;
+    }
+    if (this.queue.length === 0) {
+      console.log("DEBUG [Queue]: Empty, nothing to process");
+      return;
+    }
 
     this.isProcessing = true;
+    console.log("DEBUG [Queue]: Starting task. Remaining queue size:", this.queue.length);
     const currentTask = this.queue.shift();
 
     if (currentTask) {
       try {
         await currentTask();
+        console.log("DEBUG [Queue]: Task completed successfully");
       } catch (error) {
-        console.error("Failed executing task in background queue handler:", error);
+        console.error("DEBUG [Queue]: Failed task:", error);
       } finally {
-        // Enforce a strict cooling down phase before opening up the thread to the next task
         setTimeout(() => {
           this.isProcessing = false;
+          console.log("DEBUG [Queue]: Cooling down finished, checking next...");
           this.processNext();
         }, this.throttleDelayMs);
       }

@@ -21,6 +21,7 @@ export interface PageInsight {
 }
 
 export async function fetchPageInsights(pageText: string): Promise<PageInsight | null> {
+  console.log("DEBUG [Groq]: fetchPageInsights triggered. Text length:", pageText.length);
   try {
     const apiKey = await SecureStore.getItemAsync('groq_api_key');
     if (!apiKey) {
@@ -37,6 +38,8 @@ export async function fetchPageInsights(pageText: string): Promise<PageInsight |
 
     const groq = new Groq({ apiKey });
 
+    console.log("DEBUG [Groq]: Sending request to model:", selectedModel);
+
     const completion = await groq.chat.completions.create({
       model: selectedModel,
       response_format: { type: "json_object" },
@@ -48,6 +51,10 @@ export async function fetchPageInsights(pageText: string): Promise<PageInsight |
     });
 
     const jsonText = completion.choices[0]?.message?.content;
+
+    console.log("DEBUG [Groq]: Raw API response received. Length:", jsonText?.length || 0);
+    console.log("DEBUG [Groq]: Raw content snippet:", jsonText?.substring(0, 50));
+
     if (!jsonText) return null;
 
     return JSON.parse(jsonText) as PageInsight;

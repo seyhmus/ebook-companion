@@ -16,7 +16,7 @@ export interface EpubViewerHandle {
 }
 
 interface EpubViewerProps {
-  onPageTurn: (pageText: string) => void;
+  onPageTurn: (pageText: string, cfi: string | null) => void;
   onTextSelect: (selectedText: string) => void;
   onTocLoaded?: (toc: TocItem[]) => void;
   bookUrl: string;
@@ -108,9 +108,7 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
                 top: 0; left: 0; right: 0; bottom: 0;
                 width: 100%; height: 100%;
                 box-sizing: border-box;
-                padding-left: 12px;
-                padding-right: 12px;
-                padding-bottom: 32px;
+                padding-top: 32px;
               }
               #left-zone, #right-zone { position: absolute; top: 0; bottom: 0; width: 15%; z-index: 10; }
               #left-zone { left: 0; } #right-zone { right: 0; }
@@ -162,34 +160,13 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
                       spread: 'none'
                     });
 
-                  window.rendition.on('rendered', function(section, iframeView) {
-                      var frameWindow = iframeView.window;
-                      var frameDoc = iframeView.document;
-
-                      if (frameDoc && frameWindow) {
-                        var touchStartX = 0;
-                        var MIN_SWIPE_DISTANCE = 50; // threshold in pixels
-
-                        frameDoc.body.addEventListener('touchstart', function(e) {
-                          touchStartX = e.changedTouches[0].screenX;
-                        }, { passive: true });
-
-                        frameDoc.body.addEventListener('touchend', function(e) {
-                          var touchEndX = e.changedTouches[0].screenX;
-                          var swipeDistance = touchEndX - touchStartX;
-
-                          // Swipe Left -> Next Page
-                          if (swipeDistance < -MIN_SWIPE_DISTANCE) {
-                            window.rendition && window.rendition.next();
-                          }
-                          // Swipe Right -> Previous Page
-                          if (swipeDistance > MIN_SWIPE_DISTANCE) {
-                            window.rendition && window.rendition.prev();
-                          }
-                        }, { passive: true });
-                      }
-                    });
-
+                    // Line-height and paragraph spacing apply cleanly via
+                    // themes.default() targeting body/p inside the book's
+                    // iframe. Side margins do NOT reliably apply this way in
+                    // paginated mode (epub.js puts body in a CSS multi-column
+                    // layout, which ignores body padding for inset purposes),
+                    // so those are handled separately below via the outer
+                    // #viewer container instead.
                     window.rendition.themes.default({
                       'body': {
                         'line-height': '1.5 !important'
@@ -229,9 +206,11 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
                     var eventName = window.rendition ? 'relocated' : 'book:pageChanged';
 
                     emitter.on(eventName, function (location) {
-                      var cfi = (location && location.start && location.start.cfi)
-                        ? location.start.cfi
-                        : null;
+
+                      var cfi =
+                        (location && location.start && location.start.cfi)
+                          ? location.start.cfi
+                          : null;
 
                       if (cfi) {
                         window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -240,18 +219,62 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
                         }));
                       }
 
-                      try {
-                        var iframe = document.querySelector('#viewer iframe');
-                        var text = iframe && iframe.contentDocument
-                          ? iframe.contentDocument.body.innerText
-                          : '';
-                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                          type: 'PAGE_TURN',
-                          payload: text.substring(0, 1500)
-                        }));
-                      } catch (e) {
-                        log('Could not extract page text: ' + e.message);
-                      }
+                      (async function () {
+
+                        try {
+                          var pageText = '';
+
+                          if (
+                            location &&
+                            location.start &&
+                            location.end &&
+                            location.start.cfi &&
+                            location.end.cfi
+                          ) {
+
+                            var startRange = await window.book.getRange(location.start.cfi);
+                            var endRange = await window.book.getRange(location.end.cfi);
+
+                            if (startRange && endRange) {
+
+                                var visibleRange = document.createRange();
+
+                                visibleRange.setStart(
+                                    startRange.startContainer,
+                                    startRange.startOffset
+                                );
+
+                                visibleRange.setEnd(
+                                    endRange.endContainer,
+                                    endRange.endOffset
+                                );
+
+                                pageText = visibleRange.toString();
+
+                                log("PAGE LENGTH=" + pageText.length);
+                                log("PAGE TEXT=" + pageText.substring(0,50));
+                            }
+                          }
+
+                          window.ReactNativeWebView.postMessage(JSON.stringify({
+                            type: 'PAGE_TURN',
+                            payload: {
+                              text: pageText.substring(0, 1500),
+                              cfi: cfi
+                            }
+                          }));
+
+                        } catch (e) {
+
+                          log(
+                            'Visible-page extraction failed: ' +
+                            (e && e.message ? e.message : e)
+                          );
+
+                        }
+
+                      })();
+
                     });
                   }
 
@@ -368,7 +391,7 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
           onTextSelect(data.payload);
           break;
         case 'PAGE_TURN':
-          onPageTurn(data.payload);
+          onPageTurn(data.payload.text, data.payload.cfi ?? null);
           break;
         case 'LOCATION_CHANGE':
           updateLocation(data.payload);
