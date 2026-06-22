@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, useWindowDimensions, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
+import ReaderSettingsModal from './ReaderSettingsModal';
 
 interface PageInsight {
   summary?: string;
@@ -19,14 +20,16 @@ interface CompanionPanelProps {
   data: PageInsight | null;
 }
 
-const PEEK_HEIGHT = 48; // The permanent visible handle strip height
+// Lowered from 48 to 40 to bring the closed peek section down slightly
+const PEEK_HEIGHT = 40; 
 
 export default function CompanionPanel({ isOpen, onClose, isLoading, data }: CompanionPanelProps) {
   const { height } = useWindowDimensions();
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
-  const PANEL_HEIGHT = height * 0.55; // Panel covers 55% of the screen when expanded
+  const PANEL_HEIGHT = height * 0.55; 
   const OPEN_Y = 0;
-  const CLOSED_Y = PANEL_HEIGHT - PEEK_HEIGHT; // Slides down, leaving just the peek handle visible
+  const CLOSED_Y = PANEL_HEIGHT - PEEK_HEIGHT + 12; 
 
   const translateY = useSharedValue(CLOSED_Y);
 
@@ -35,6 +38,9 @@ export default function CompanionPanel({ isOpen, onClose, isLoading, data }: Com
       damping: 24,
       stiffness: 180,
     });
+    if (!isOpen) {
+      setSettingsVisible(false);
+    }
   }, [isOpen, height]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -43,18 +49,35 @@ export default function CompanionPanel({ isOpen, onClose, isLoading, data }: Com
 
   return (
     <Animated.View style={[styles.panel, { height: PANEL_HEIGHT }, animatedStyle]}>
-      {/* Pinned Tab Trigger at the TOP of the bottom panel */}
-      <TouchableOpacity 
-        style={[styles.handleBar, { height: PEEK_HEIGHT }]} 
-        onPress={onClose} 
-        activeOpacity={0.9}
-      >
-        <Text style={styles.handleText}>
-          {isOpen ? '▼ AI Insights' : '▲ AI Insights'}
-        </Text>
-      </TouchableOpacity>
+      {/* Settings Modal Instance */}
+      <ReaderSettingsModal 
+        visible={settingsVisible} 
+        onClose={() => setSettingsVisible(false)} 
+      />
 
-      {/* Scrollable Contents Window Area (offset by the top handle height) */}
+      {/* Static Header Row */}
+      <View style={[styles.headerRow, { height: PEEK_HEIGHT }]}>
+        <View style={styles.sideButtonSpacer} />
+
+        <TouchableOpacity 
+          style={styles.handleBar} 
+          onPress={onClose} 
+          activeOpacity={0.9}
+        >
+          <Text style={styles.handleText}>
+            {isOpen ? '▼ AI Insights' : '▲ AI Insights'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.settingsButton} 
+          onPress={() => setSettingsVisible(true)}
+        >
+          <Text style={styles.settingsButtonText}>⚙</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Scrollable Contents Area */}
       <View style={styles.mainContent}>
         <ScrollView showsVerticalScrollIndicator={true}>
           <View style={styles.contentPadding}>
@@ -102,7 +125,7 @@ export default function CompanionPanel({ isOpen, onClose, isLoading, data }: Com
 const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
-    bottom: 0, // Hard anchored to the bottom edge of the device screen context
+    bottom: 0, 
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
@@ -111,20 +134,43 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 5,
-    zIndex: 999, // Guarantees layout rendering priority over the reading view port
+    zIndex: 999, 
   },
-  handleBar: {
+  headerRow: {
+    flexDirection: 'row',
     backgroundColor: '#F1F3F5',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#E9ECEF',
+    alignItems: 'center',
+    margin: 0,
+    padding: 0,
+  },
+  sideButtonSpacer: {
+    width: 44,
+  },
+  handleBar: {
+    flex: 1,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   handleText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#495057',
+  },
+  settingsButton: {
+    width: 44,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#E9ECEF',
+  },
+  settingsButtonText: {
+    fontSize: 16,
+    color: '#007AFF',
   },
   mainContent: {
     flex: 1,
