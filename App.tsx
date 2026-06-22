@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -10,9 +10,10 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context"; // Updated Import
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import EpubViewer from "./components/EpubViewer";
+import EpubViewer, { EpubViewerHandle, TocItem } from "./components/EpubViewer";
 import CompanionPanel from "./components/CompanionPanel";
-import ApiKeyModal from "./components/ApiKeyModel";
+import TocPanel from "./components/TocPanel";
+import ApiKeyModal from "./components/ApiKeyModal";
 import { fetchPageInsights, PageInsight } from "./services/groq";
 import { groqQueue } from "./services/queue";
 import { useCacheStore } from "./store/cacheStore";
@@ -24,6 +25,9 @@ export default function App() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeData, setActiveData] = useState<PageInsight | null>(null);
+  const [toc, setToc] = useState<TocItem[]>([]);
+  const [isTocOpen, setIsTocOpen] = useState(false);
+  const epubViewerRef = useRef<EpubViewerHandle>(null);
 
   const { setPageInsight, getCachedInsight } = useCacheStore();
   const { setBook, getLocationForBook } = useBookStore();
@@ -57,6 +61,7 @@ export default function App() {
 
         setBookId(stableBookId);
         setBook(stableBookId);
+        setToc([]);
       }
     } catch (error) {
       console.error("Error picking document asset:", error);
@@ -92,6 +97,10 @@ export default function App() {
     });
   };
 
+  const handleTocSelect = (href: string) => {
+    epubViewerRef.current?.navigateToHref(href);
+  };
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -103,11 +112,19 @@ export default function App() {
             {localBookUrl && bookId ? (
               <>
                 <EpubViewer
+                  ref={epubViewerRef}
                   bookUrl={localBookUrl}
                   bookId={bookId}
                   savedCfi={getLocationForBook(bookId)}
                   onPageTurn={handlePageTurn}
                   onTextSelect={handleTextSelect}
+                  onTocLoaded={setToc}
+                />
+                <TocPanel
+                  isOpen={isTocOpen}
+                  onClose={() => setIsTocOpen(false)}
+                  toc={toc}
+                  onSelect={handleTocSelect}
                 />
                 <CompanionPanel
                   isOpen={isPanelOpen}

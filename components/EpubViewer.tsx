@@ -1,13 +1,24 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import { useBookStore } from '../store/bookStore';
 
+export interface TocItem {
+  label: string;
+  href: string;
+  depth: number;
+}
+
+export interface EpubViewerHandle {
+  navigateToHref: (href: string) => void;
+}
+
 interface EpubViewerProps {
   onPageTurn: (pageText: string) => void;
   onTextSelect: (selectedText: string) => void;
+  onTocLoaded?: (toc: TocItem[]) => void;
   bookUrl: string;
   bookId: string;
   savedCfi?: string | null;
@@ -22,12 +33,30 @@ interface EpubViewerProps {
 const JSZIP_LIB_MODULE = require('../assets/jszip.bundle.txt');
 const EPUB_LIB_MODULE = require('../assets/epub.bundle.txt');
 
-export default function EpubViewer({ onPageTurn, onTextSelect, bookUrl, bookId, savedCfi }: EpubViewerProps) {
+const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubViewer(
+  { onPageTurn, onTextSelect, onTocLoaded, bookUrl, bookId, savedCfi },
+  ref
+) {
   const webViewRef = useRef<WebView>(null);
   const { fontSize, updateLocation } = useBookStore();
   const [viewerHtmlPath, setViewerHtmlPath] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    navigateToHref: (href: string) => {
+      if (!webViewRef.current) return;
+      const safeHref = JSON.stringify(href);
+      webViewRef.current.injectJavaScript(`
+        (function () {
+          if (window.rendition) {
+            window.rendition.display(${safeHref});
+          }
+        })();
+        true;
+      `);
+    },
+  }));
 
   useEffect(() => {
     async function initializeLocalViewerAssets() {
@@ -74,7 +103,14 @@ export default function EpubViewer({ onPageTurn, onTextSelect, bookUrl, bookId, 
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
             <style>
               html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #FFF; }
-              #viewer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
+              #viewer {
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                width: 100%; height: 100%;
+                box-sizing: border-box;
+                padding-left: 32px;
+                padding-right: 32px;
+              }
               #left-zone, #right-zone { position: absolute; top: 0; bottom: 0; width: 15%; z-index: 10; }
               #left-zone { left: 0; } #right-zone { right: 0; }
             </style>
@@ -123,6 +159,15 @@ export default function EpubViewer({ onPageTurn, onTextSelect, bookUrl, bookId, 
                       height: '100%',
                       flow: 'paginated',
                       spread: 'none'
+                    });
+
+                    window.rendition.themes.default({
+                      'body': {
+                        'line-height': '1.5 !important'
+                      },
+                      'p': {
+                        'margin-bottom': '1em !important'
+                      }
                     });
 
                     var savedCfi = ${safeSavedCfi};
@@ -186,17 +231,54 @@ export default function EpubViewer({ onPageTurn, onTextSelect, bookUrl, bookId, 
                   if (window.book.ready && typeof window.book.ready.then === 'function') {
                     log('Using 0.3.x-style promise API (book.ready).');
                     window.book.ready
-                      .then(startRender)
+                      .then(function () {
+                        sendToc();
+                        startRender();
+                      })
                       .catch(function (err) {
                         log('book.ready FAILED: ' + (err && err.message ? err.message : JSON.stringify(err)));
                       });
                   } else {
                     log('book.ready is not a promise — falling back to legacy 0.2.x event API.');
                     if (typeof window.book.on === 'function') {
-                      window.book.on('book:ready', startRender);
+                      window.book.on('book:ready', function () {
+                        sendToc();
+                        startRender();
+                      });
                     } else {
                       // Last resort: just try rendering immediately.
+                      sendToc();
                       startRender();
+                    }
+                  }
+
+                  function sendToc() {
+                    try {
+                      window.book.loaded.navigation.then(function (nav) {
+                        var flat = [];
+                        function flatten(items, depth) {
+                          (items || []).forEach(function (item) {
+                            flat.push({
+                              label: (item.label || '').trim(),
+                              href: item.href,
+                              depth: depth
+                            });
+                            if (item.subitems && item.subitems.length) {
+                              flatten(item.subitems, depth + 1);
+                            }
+                          });
+                        }
+                        flatten(nav.toc, 0);
+                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                          type: 'TOC_LOADED',
+                          payload: flat
+                        }));
+                        log('TOC sent: ' + flat.length + ' entries.');
+                      }).catch(function (err) {
+                        log('Failed to load navigation/TOC: ' + (err && err.message ? err.message : JSON.stringify(err)));
+                      });
+                    } catch (e) {
+                      log('sendToc exception: ' + e.message);
                     }
                   }
 
@@ -262,6 +344,9 @@ export default function EpubViewer({ onPageTurn, onTextSelect, bookUrl, bookId, 
         case 'LOCATION_CHANGE':
           updateLocation(data.payload);
           break;
+        case 'TOC_LOADED':
+          onTocLoaded && onTocLoaded(data.payload);
+          break;
       }
     } catch (e) {
       console.error('Bridge parse validation exception:', e);
@@ -310,7 +395,9 @@ export default function EpubViewer({ onPageTurn, onTextSelect, bookUrl, bookId, 
       />
     </View>
   );
-}
+});
+
+export default EpubViewer;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },

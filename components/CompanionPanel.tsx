@@ -46,6 +46,8 @@ export default function CompanionPanel({ isOpen, onClose, isLoading, data }: Com
   }, [isOpen, PANEL_WIDTH]);
 
   const gesture = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-10, 10])
     .onChange((event) => {
       translateX.value = Math.max(OPEN_X, Math.min(CLOSED_X, translateX.value + event.changeX));
     })
