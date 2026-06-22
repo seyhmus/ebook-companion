@@ -13,11 +13,12 @@ interface TocPanelProps {
   onToggle: () => void;
   toc: TocItem[];
   onSelect: (href: string) => void;
+  onCloseBook: () => void;
 }
 
 const PEEK_HEIGHT = 48; // Height of the handle bar strip
 
-export default function TocPanel({ isOpen, onToggle, toc, onSelect }: TocPanelProps) {
+export default function TocPanel({ isOpen, onToggle, toc, onSelect, onCloseBook }: TocPanelProps) {
   const { height } = useWindowDimensions();
   
   // Limit the expanded TOC to 45% of the screen height instead of full screen
@@ -64,15 +65,25 @@ export default function TocPanel({ isOpen, onToggle, toc, onSelect }: TocPanelPr
       </View>
 
       {/* Handle Bar Trigger pinned strictly to the bottom of this panel component */}
-      <TouchableOpacity 
-        style={[styles.handleBar, { height: PEEK_HEIGHT }]} 
-        onPress={onToggle} 
-        activeOpacity={0.9}
-      >
-        <Text style={styles.handleText}>
-          {isOpen ? '▲ Table of Contents' : '▼ Table of Contents'}
-        </Text>
-      </TouchableOpacity>
+      <View style={[styles.handleBar, { height: PEEK_HEIGHT }]}> 
+        <TouchableOpacity 
+          style={styles.handleArea}
+          onPress={onToggle} 
+          activeOpacity={0.9}
+        />
+        <View style={styles.handleLabelContainer} pointerEvents="none">
+          <Text style={styles.handleText}>
+            {isOpen ? '▲ Table of Contents' : '▼ Table of Contents'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={onCloseBook}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.closeButtonText}>✕</Text>
+        </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 }
@@ -113,12 +124,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   handleBar: {
+    position: 'relative',
     backgroundColor: '#F1F3F5',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#E9ECEF',
+  },
+  handleArea: {
+    position: 'absolute',
+    left: 0,
+    right: 44,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  handleLabelContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#E9ECEF',
+    zIndex: 2,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: '#007AFF',
   },
   handleText: {
     fontSize: 13,

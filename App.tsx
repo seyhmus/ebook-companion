@@ -147,6 +147,14 @@ export default function App() {
                     epubViewerRef.current?.navigateToHref(href);
                     setIsTocOpen(false);
                   }}
+                  onCloseBook={() => {
+                    setLocalBookUrl(null);
+                    setBookId(null);
+                    setToc([]);
+                    setActiveData(null);
+                    setIsPanelOpen(false);
+                    setIsTocOpen(false);
+                  }}
                 />
 
                 <EpubViewer
