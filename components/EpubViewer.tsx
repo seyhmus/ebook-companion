@@ -108,8 +108,9 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
                 top: 0; left: 0; right: 0; bottom: 0;
                 width: 100%; height: 100%;
                 box-sizing: border-box;
-                padding-left: 32px;
-                padding-right: 32px;
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-bottom: 32px;
               }
               #left-zone, #right-zone { position: absolute; top: 0; bottom: 0; width: 15%; z-index: 10; }
               #left-zone { left: 0; } #right-zone { right: 0; }
@@ -159,6 +160,34 @@ const EpubViewer = forwardRef<EpubViewerHandle, EpubViewerProps>(function EpubVi
                       height: '100%',
                       flow: 'paginated',
                       spread: 'none'
+                    });
+
+                  window.rendition.on('rendered', function(section, iframeView) {
+                      var frameWindow = iframeView.window;
+                      var frameDoc = iframeView.document;
+
+                      if (frameDoc && frameWindow) {
+                        var touchStartX = 0;
+                        var MIN_SWIPE_DISTANCE = 50; // threshold in pixels
+
+                        frameDoc.body.addEventListener('touchstart', function(e) {
+                          touchStartX = e.changedTouches[0].screenX;
+                        }, { passive: true });
+
+                        frameDoc.body.addEventListener('touchend', function(e) {
+                          var touchEndX = e.changedTouches[0].screenX;
+                          var swipeDistance = touchEndX - touchStartX;
+
+                          // Swipe Left -> Next Page
+                          if (swipeDistance < -MIN_SWIPE_DISTANCE) {
+                            window.rendition && window.rendition.next();
+                          }
+                          // Swipe Right -> Previous Page
+                          if (swipeDistance > MIN_SWIPE_DISTANCE) {
+                            window.rendition && window.rendition.prev();
+                          }
+                        }, { passive: true });
+                      }
                     });
 
                     window.rendition.themes.default({

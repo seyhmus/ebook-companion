@@ -67,7 +67,7 @@ export default function App() {
       console.error("Error picking document asset:", error);
     }
   };
-  
+
   // Keep your handlers (handleTextSelect, handlePageTurn) identical here...
   const handleTextSelect = async (selectedText: string) => {
     setIsPanelOpen(true);
@@ -111,6 +111,19 @@ export default function App() {
           <View style={styles.workspace}>
             {localBookUrl && bookId ? (
               <>
+                <TocPanel
+                  isOpen={isTocOpen}
+                  onToggle={() => {
+                    setIsTocOpen(!isTocOpen);
+                    if (!isTocOpen) setIsPanelOpen(false);
+                  }}
+                  toc={toc}
+                  onSelect={(href) => {
+                    epubViewerRef.current?.navigateToHref(href);
+                    setIsTocOpen(false);
+                  }}
+                />
+
                 <EpubViewer
                   ref={epubViewerRef}
                   bookUrl={localBookUrl}
@@ -120,15 +133,13 @@ export default function App() {
                   onTextSelect={handleTextSelect}
                   onTocLoaded={setToc}
                 />
-                <TocPanel
-                  isOpen={isTocOpen}
-                  onClose={() => setIsTocOpen(false)}
-                  toc={toc}
-                  onSelect={handleTocSelect}
-                />
+
                 <CompanionPanel
                   isOpen={isPanelOpen}
-                  onClose={() => setIsPanelOpen(false)}
+                  onClose={() => {
+                    setIsPanelOpen(!isPanelOpen);
+                    if (!isPanelOpen) setIsTocOpen(false); // Closes top shelf if opening bottom shelf
+                  }}
                   isLoading={isLoading}
                   data={activeData}
                 />
@@ -156,7 +167,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  workspace: { flex: 1, flexDirection: "row", position: "relative" },
+  workspace: { flex: 1, position: "relative" },
   uploadState: {
     flex: 1,
     justifyContent: "center",

@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, useWindowDimensions, ScrollView, ActivityIndicator } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { StyleSheet, View, Text, useWindowDimensions, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -20,181 +19,121 @@ interface CompanionPanelProps {
   data: PageInsight | null;
 }
 
-// How much of the panel stays visible on the right edge when "closed",
-// as a hint that it's swipeable.
-const PEEK_WIDTH = 24;
+const PEEK_HEIGHT = 48; // The permanent visible handle strip height
 
 export default function CompanionPanel({ isOpen, onClose, isLoading, data }: CompanionPanelProps) {
-  const { width } = useWindowDimensions();
-  const isTablet = width > 768;
+  const { height } = useWindowDimensions();
 
-  const PANEL_WIDTH = isTablet ? 380 : width * 0.85;
-  const OPEN_X = 0;
-  const CLOSED_X = PANEL_WIDTH - PEEK_WIDTH;
+  const PANEL_HEIGHT = height * 0.55; // Panel covers 55% of the screen when expanded
+  const OPEN_Y = 0;
+  const CLOSED_Y = PANEL_HEIGHT - PEEK_HEIGHT; // Slides down, leaving just the peek handle visible
 
-  // Start closed (peeking) regardless of screen size.
-  const translateX = useSharedValue(CLOSED_X);
+  const translateY = useSharedValue(CLOSED_Y);
 
-  // Drive the slide animation from the isOpen prop, so tapping a word or
-  // turning a page (which sets isOpen via App.tsx) actually opens the panel,
-  // not just the swipe gesture.
   useEffect(() => {
-    translateX.value = withSpring(isOpen ? OPEN_X : CLOSED_X, {
-      damping: 18,
+    translateY.value = withSpring(isOpen ? OPEN_Y : CLOSED_Y, {
+      damping: 24,
       stiffness: 180,
     });
-  }, [isOpen, PANEL_WIDTH]);
-
-  const gesture = Gesture.Pan()
-    .activeOffsetX([-10, 10])
-    .failOffsetY([-10, 10])
-    .onChange((event) => {
-      translateX.value = Math.max(OPEN_X, Math.min(CLOSED_X, translateX.value + event.changeX));
-    })
-    .onEnd((event) => {
-      const shouldClose = event.velocityX > 500 || translateX.value > CLOSED_X / 2;
-      translateX.value = withSpring(shouldClose ? CLOSED_X : OPEN_X, {
-        damping: 18,
-        stiffness: 180,
-      });
-      // Keep the parent's isOpen state in sync so a later programmatic
-      // open/close (e.g. from a new lookup) starts from the right place.
-      if (shouldClose) {
-        onClose();
-      }
-    });
+  }, [isOpen, height]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateY: translateY.value }],
   }));
 
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.panel, { width: PANEL_WIDTH }, animatedStyle]}>
-        {/* Header Branding Panel */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Page Companion</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Llama 3.1 8B</Text>
-          </View>
-        </View>
+    <Animated.View style={[styles.panel, { height: PANEL_HEIGHT }, animatedStyle]}>
+      {/* Pinned Tab Trigger at the TOP of the bottom panel */}
+      <TouchableOpacity 
+        style={[styles.handleBar, { height: PEEK_HEIGHT }]} 
+        onPress={onClose} 
+        activeOpacity={0.9}
+      >
+        <Text style={styles.handleText}>
+          {isOpen ? '▼ AI Insights' : '▲ AI Insights'}
+        </Text>
+      </TouchableOpacity>
 
-        {isLoading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="small" color="#007AFF" />
-            <Text style={styles.loadingText}>Running structural analysis...</Text>
-          </View>
-        ) : data ? (
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* 1. Narrative Summary Card */}
-            {data.summary && (
-              <View style={styles.card}>
-                <Text style={styles.sectionLabel}>Context Summary</Text>
-                <Text style={styles.summaryText}>{data.summary}</Text>
+      {/* Scrollable Contents Window Area (offset by the top handle height) */}
+      <View style={styles.mainContent}>
+        <ScrollView showsVerticalScrollIndicator={true}>
+          <View style={styles.contentPadding}>
+            {isLoading ? (
+              <View style={styles.centerContainer}>
+                <ActivityIndicator size="small" color="#007AFF" />
+                <Text style={styles.loadingText}>Analyzing text workspace…</Text>
               </View>
-            )}
-
-            {/* 2. Vocabulary Chips & Definitions */}
-            {data.uncommon_words && data.uncommon_words.length > 0 && (
-              <View style={styles.card}>
-                <Text style={styles.sectionLabel}>Vocabulary Expansion</Text>
-                {data.uncommon_words.map((item, idx) => (
-                  <View key={idx} style={styles.wordRow}>
-                    <View style={styles.wordHeader}>
-                      <Text style={styles.wordText}>{item.word}</Text>
-                      <Text style={styles.gradeText}>{item.grade_level}</Text>
-                    </View>
-                    <Text style={styles.definitionText}>{item.definition}</Text>
+            ) : data ? (
+              <View style={styles.gap}>
+                {data.summary && (
+                  <View style={styles.card}>
+                    <Text style={styles.sectionLabel}>Context Summary</Text>
+                    <Text style={styles.summaryText}>{data.summary}</Text>
                   </View>
-                ))}
-              </View>
-            )}
+                )}
 
-            {/* 3. Specialized Deep Lore Insights */}
-            {data.contextual_insights && data.contextual_insights.length > 0 && (
-              <View style={styles.card}>
-                <Text style={styles.sectionLabel}>Contextual Insights</Text>
-                {data.contextual_insights.map((item, idx) => (
-                  <View key={idx} style={styles.insightBox}>
-                    <Text style={styles.insightSubject}>{item.subject}</Text>
-                    <Text style={styles.insightText}>{item.insight}</Text>
+                {data.uncommon_words && data.uncommon_words.length > 0 && (
+                  <View style={styles.card}>
+                    <Text style={styles.sectionLabel}>Vocabulary</Text>
+                    {data.uncommon_words.map((item, idx) => (
+                      <View key={idx} style={styles.wordRow}>
+                        <View style={styles.wordHeader}>
+                          <Text style={styles.wordText}>{item.word}</Text>
+                          <Text style={styles.gradeText}>{item.grade_level}</Text>
+                        </View>
+                        <Text style={styles.definitionText}>{item.definition}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                )}
+              </View>
+            ) : (
+              <View style={styles.centerContainer}>
+                <Text style={styles.neutralText}>Highlight text or turn pages to trigger analysis.</Text>
               </View>
             )}
-          </ScrollView>
-        ) : (
-          <View style={styles.centerContainer}>
-            <Text style={styles.neutralText}>Turn the page or highlight specific text to update the companion.</Text>
           </View>
-        )}
-      </Animated.View>
-    </GestureDetector>
+        </ScrollView>
+      </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
+    bottom: 0, // Hard anchored to the bottom edge of the device screen context
+    left: 0,
     right: 0,
-    backgroundColor: '#F8F9FA',
-    borderLeftWidth: 1,
-    borderLeftColor: '#E9ECEF',
-    paddingTop: 16,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: -2, height: 0 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
     elevation: 5,
+    zIndex: 999, // Guarantees layout rendering priority over the reading view port
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9ECEF',
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#212529',
-    letterSpacing: -0.2,
-  },
-  badge: {
-    backgroundColor: '#E7F5FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  badgeText: {
-    fontSize: 10,
-    color: '#228BE6',
-    fontWeight: '600',
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 16,
-  },
-  centerContainer: {
-    flex: 1,
+  handleBar: {
+    backgroundColor: '#F1F3F5',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E9ECEF',
   },
-  loadingText: {
-    marginTop: 12,
+  handleText: {
     fontSize: 13,
-    color: '#868E96',
+    fontWeight: '600',
+    color: '#495057',
   },
-  neutralText: {
-    fontSize: 13,
-    color: '#ADB5BD',
-    textAlign: 'center',
-    lineHeight: 18,
+  mainContent: {
+    flex: 1,
+  },
+  contentPadding: {
+    padding: 16,
+  },
+  gap: {
+    gap: 12,
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -209,23 +148,22 @@ const styles = StyleSheet.create({
     color: '#495057',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   summaryText: {
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 18,
     color: '#343A40',
   },
   wordRow: {
     borderBottomWidth: 1,
     borderBottomColor: '#F1F3F5',
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   wordHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: 2,
   },
   wordText: {
     fontSize: 14,
@@ -235,30 +173,24 @@ const styles = StyleSheet.create({
   gradeText: {
     fontSize: 11,
     color: '#868E96',
-    fontStyle: 'italic',
   },
   definitionText: {
     fontSize: 13,
     color: '#495057',
-    lineHeight: 17,
+    marginTop: 2,
   },
-  insightBox: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: 6,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#339AF0',
+  centerContainer: {
+    paddingVertical: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  insightSubject: {
+  loadingText: {
+    marginTop: 12,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#1C7ED6',
-    marginBottom: 3,
+    color: '#868E96',
   },
-  insightText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#495057',
+  neutralText: {
+    fontSize: 13,
+    color: '#ADB5BD',
   },
 });

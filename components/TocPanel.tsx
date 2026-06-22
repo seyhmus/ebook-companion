@@ -1,97 +1,79 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, useWindowDimensions, ScrollView, TouchableOpacity } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
-import { TocItem } from './EpubViewer';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+
+interface TocItem {
+  label: string;
+  href: string;
+  depth: number;
+}
 
 interface TocPanelProps {
   isOpen: boolean;
-  onClose: () => void;
+  onToggle: () => void;
   toc: TocItem[];
   onSelect: (href: string) => void;
 }
 
-// How much of the panel stays visible on the left edge when "closed", as a
-// hint that it's swipeable. Mirrors CompanionPanel's PEEK_WIDTH.
-const PEEK_WIDTH = 24;
+const PEEK_HEIGHT = 48; // Height of the handle bar strip
 
-export default function TocPanel({ isOpen, onClose, toc, onSelect }: TocPanelProps) {
-  const { width } = useWindowDimensions();
-  const isTablet = width > 768;
-
-  const PANEL_WIDTH = isTablet ? 380 : width * 0.85;
-  const OPEN_X = 0;
-  // Panel is anchored to the left, so "closed" means shifted left by its
-  // own width minus the peek amount (negative translateX).
-  const CLOSED_X = -(PANEL_WIDTH - PEEK_WIDTH);
-
-  const translateX = useSharedValue(CLOSED_X);
+export default function TocPanel({ isOpen, onToggle, toc, onSelect }: TocPanelProps) {
+  const { height } = useWindowDimensions();
+  
+  // Limit the expanded TOC to 45% of the screen height instead of full screen
+  const MAX_EXPANDED_HEIGHT = height * 0.45; 
+  
+  const translateY = useSharedValue(-MAX_EXPANDED_HEIGHT + PEEK_HEIGHT);
 
   useEffect(() => {
-    translateX.value = withSpring(isOpen ? OPEN_X : CLOSED_X, {
-      damping: 18,
+    // When open, slide down to 0. When closed, hide everything except the peek strip.
+    const targetY = isOpen ? 0 : -MAX_EXPANDED_HEIGHT + PEEK_HEIGHT;
+    translateY.value = withSpring(targetY, {
+      damping: 24,
       stiffness: 180,
     });
-  }, [isOpen, PANEL_WIDTH]);
-
-  const gesture = Gesture.Pan()
-    .activeOffsetX([-10, 10])
-    .failOffsetY([-10, 10])
-    .onChange((event) => {
-      translateX.value = Math.max(CLOSED_X, Math.min(OPEN_X, translateX.value + event.changeX));
-    })
-    .onEnd((event) => {
-      const shouldClose = event.velocityX < -500 || translateX.value < CLOSED_X / 2;
-      translateX.value = withSpring(shouldClose ? CLOSED_X : OPEN_X, {
-        damping: 18,
-        stiffness: 180,
-      });
-      if (shouldClose) {
-        onClose();
-      }
-    });
+  }, [isOpen, height]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateY: translateY.value }],
   }));
 
-  const handleSelect = (href: string) => {
-    onSelect(href);
-    onClose();
-  };
-
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.panel, { width: PANEL_WIDTH }, animatedStyle]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Contents</Text>
-        </View>
-
-        {toc.length > 0 ? (
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {toc.map((item, idx) => (
-              <TouchableOpacity
-                key={`${item.href}-${idx}`}
-                style={[styles.tocRow, { paddingLeft: 16 + item.depth * 16 }]}
-                onPress={() => handleSelect(item.href)}
-              >
-                <Text style={styles.tocLabel} numberOfLines={2}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : (
-          <View style={styles.centerContainer}>
-            <Text style={styles.neutralText}>Table of contents will appear here once the book loads.</Text>
+    <Animated.View style={[styles.panel, { height: MAX_EXPANDED_HEIGHT }, animatedStyle]}>
+      {/* Scrollable List Area (hidden off-screen at the top when closed) */}
+      <View style={styles.mainContent}>
+        <ScrollView showsVerticalScrollIndicator={true}>
+          <View style={styles.listPadding}>
+            {toc.length === 0 ? (
+              <Text style={styles.emptyText}>No table of contents found.</Text>
+            ) : (
+              toc.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.tocRow, { paddingLeft: 16 + item.depth * 12 }]}
+                  onPress={() => onSelect(item.href)}
+                >
+                  <Text style={styles.tocText} numberOfLines={1}>
+                    {item.label.trim()}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
-        )}
-      </Animated.View>
-    </GestureDetector>
+        </ScrollView>
+      </View>
+
+      {/* Handle Bar Trigger pinned strictly to the bottom of this panel component */}
+      <TouchableOpacity 
+        style={[styles.handleBar, { height: PEEK_HEIGHT }]} 
+        onPress={onToggle} 
+        activeOpacity={0.9}
+      >
+        <Text style={styles.handleText}>
+          {isOpen ? '▲ Table of Contents' : '▼ Table of Contents'}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -99,57 +81,48 @@ const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
     top: 0,
-    bottom: 0,
     left: 0,
-    backgroundColor: '#F8F9FA',
-    borderRightWidth: 1,
-    borderRightColor: '#E9ECEF',
-    paddingTop: 16,
+    right: 0,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 0 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
     elevation: 5,
+    zIndex: 999,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9ECEF',
+  mainContent: {
+    flex: 1,
   },
-  title: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#212529',
-    letterSpacing: -0.2,
-  },
-  scrollContent: {
+  listPadding: {
     paddingVertical: 8,
   },
   tocRow: {
-    paddingVertical: 12,
-    paddingRight: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F3F5',
   },
-  tocLabel: {
-    fontSize: 13,
-    color: '#343A40',
-    lineHeight: 18,
+  tocText: {
+    fontSize: 14,
+    color: '#495057',
   },
-  centerContainer: {
-    flex: 1,
+  emptyText: {
+    padding: 20,
+    textAlign: 'center',
+    color: '#ADB5BD',
+    fontSize: 14,
+  },
+  handleBar: {
+    backgroundColor: '#F1F3F5',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E9ECEF',
   },
-  neutralText: {
+  handleText: {
     fontSize: 13,
-    color: '#ADB5BD',
-    textAlign: 'center',
-    lineHeight: 18,
+    fontWeight: '600',
+    color: '#495057',
   },
 });
